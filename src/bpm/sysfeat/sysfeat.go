@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	swapPath = "memory.memsw.limit_in_bytes"
+	cgroupsv1SwapPath = "memory.memsw.limit_in_bytes"
+	cgroupsv2SwapPath = "memory.swap.max"
 )
 
 // Features contains information about what features the host system supports.
@@ -35,6 +36,22 @@ type Features struct {
 }
 
 func Fetch() (*Features, error) {
+	if cgroups.IsCgroup2UnifiedMode() {
+		m, err := cgroups.ParseCgroupFile("/proc/self/cgroup")
+		if err != nil {
+			return nil, err
+		}
+
+		var path string
+		if cgroupPath, ok := m[""]; ok {
+			path = filepath.Join("/sys/fs/cgroup", cgroupPath, cgroupsv2SwapPath)
+		}
+
+		return &Features{
+			SwapLimitSupported: cgroups.PathExists(path),
+		}, nil
+	}
+
 	mountpoint, err := cgroups.FindCgroupMountpoint("", "memory")
 	if err != nil {
 		return nil, err
@@ -46,6 +63,6 @@ func Fetch() (*Features, error) {
 }
 
 func swapLimitSupported(mount string) bool {
-	_, err := os.Stat(filepath.Join(mount, swapPath))
+	_, err := os.Stat(filepath.Join(mount, cgroupsv1SwapPath))
 	return err == nil
 }
